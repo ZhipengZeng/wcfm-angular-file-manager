@@ -1,0 +1,22 @@
+:host {
+  display: block;
+}
+
+.demo-shell {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.demo-shell h1 {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: #111;
+}
+
+.demo-shell p {
+  margin: 4px 0 16px;
+  color: #6b7280;
+  font-size: 0.875rem;
+}

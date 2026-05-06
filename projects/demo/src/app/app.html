@@ -1,0 +1,17 @@
+<main class="demo-shell">
+  <header>
+    <h1>Whitecap File Manager Demo</h1>
+    <p>
+      Work-order tree mock (SharePoint-shaped JSON + extra files under Safety). Swap
+      <code>ProductionLikeMockStorageProvider</code> for <code>MockStorageProvider</code> in
+      <code>app.ts</code> for the generic demo dataset.
+    </p>
+  </header>
+
+  <whitecap-file-manager
+    [provider]="provider"
+    [uploadValidation]="uploadValidation"
+    [defaultDuplicateStrategy]="'rename'"
+    [height]="explorerHeight"
+  />
+</main>
