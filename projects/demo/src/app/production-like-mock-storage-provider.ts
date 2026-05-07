@@ -115,6 +115,7 @@ export class ProductionLikeMockStorageProvider implements WhitecapStorageProvide
   };
 
   private readonly items = buildItemsMap(workOrderTreeRoot as WorkOrderDriveItemDto);
+  private readonly uploadedFiles = new Map<string, File>();
 
   list(query: WhitecapFileQuery): Observable<WhitecapFilePage> {
     const path = normalizePath(query.path);
@@ -162,12 +163,80 @@ export class ProductionLikeMockStorageProvider implements WhitecapStorageProvide
   }
 
   preview(item: WhitecapFileItem): Observable<Blob | string> {
-    if (item.extension === 'png' || item.extension === 'jpg' || item.extension === 'jpeg') {
-      const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 160'><rect width='240' height='160' fill='%23fff4ec'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='system-ui' font-size='14' fill='%23ea580c'>${item.name}</text></svg>`;
+    const uploaded = this.uploadedFiles.get(item.path);
+    if (uploaded) {
+      return of(uploaded).pipe(delay(60));
+    }
+
+    const ext = item.extension?.toLowerCase();
+
+    if (ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'svg') {
+      const color = ext === 'svg' ? '%230ea5e9' : '%23ea580c';
+      const bg = ext === 'svg' ? '%23e0f2fe' : '%23fff4ec';
+      const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 160'><rect width='240' height='160' fill='${bg}'/><text x='50%' y='45%' dominant-baseline='middle' text-anchor='middle' font-family='system-ui' font-size='14' fill='${color}'>${item.name}</text><text x='50%' y='65%' dominant-baseline='middle' text-anchor='middle' font-family='system-ui' font-size='11' fill='${color}' opacity='0.7'>${(item.size ?? 0) > 1024 ? Math.round((item.size ?? 0) / 1024) + ' KB' : (item.size ?? 0) + ' B'}</text></svg>`;
       return of(new Blob([decodeURIComponent(svg)], { type: 'image/svg+xml' })).pipe(delay(60));
     }
-    const content = `Preview of ${item.path}\n\n(Production-like mock — metadata keys: ${Object.keys(item.metadata ?? {}).join(', ')}.)`;
-    return of(content).pipe(delay(60));
+
+    if (ext === 'pdf') {
+      const pdfContent = `%PDF-1.4
+1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
+2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj
+3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj
+4 0 obj<</Length 80>>
+stream
+BT /F1 18 Tf 72 700 Td (${item.name}) Tj 0 -30 Td /F1 12 Tf (Mock PDF — demo provider) Tj ET
+endstream
+endobj
+5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj
+xref
+0 6
+0000000000 65535 f\r
+0000000009 00000 n\r
+0000000058 00000 n\r
+0000000115 00000 n\r
+0000000266 00000 n\r
+0000000396 00000 n\r
+trailer<</Size 6/Root 1 0 R>>
+startxref
+471
+%%EOF`;
+      return of(new Blob([pdfContent], { type: 'application/pdf' })).pipe(delay(80));
+    }
+
+    if (ext === 'eml') {
+      const emlContent = [
+        `From: Alice Tan <alice.tan@example.com>`,
+        `To: Brett Lo <brett.lo@example.com>`,
+        `Subject: Re: ${item.name.replace(/\.eml$/i, '')}`,
+        `Date: ${new Date(item.modifiedAt ?? Date.now()).toUTCString()}`,
+        `Content-Type: text/plain; charset=UTF-8`,
+        ``,
+        `Hi Brett,`,
+        ``,
+        `This is a demo email stored in the file manager. In production this would be`,
+        `the actual content of ${item.name}.`,
+        ``,
+        `Metadata keys available: ${Object.keys(item.metadata ?? {}).join(', ')}.`,
+        ``,
+        `Best regards,`,
+        `Alice`,
+      ].join('\r\n');
+      return of(emlContent).pipe(delay(60));
+    }
+
+    if (ext === 'csv') {
+      return of('name,value,date\nAlpha,123,2026-01-01\nBeta,456,2026-02-01\nGamma,789,2026-03-01\nDelta,321,2026-04-01').pipe(delay(60));
+    }
+
+    if (ext === 'md') {
+      return of(`# ${item.name.replace(/\.md$/i, '')}\n\nDemo markdown content for this file.\n\n- Item one\n- Item two\n- Item three`).pipe(delay(60));
+    }
+
+    if (ext === 'txt' || ext === 'log') {
+      return of(`[INFO]  Application started\n[INFO]  Loading configuration\n[WARN]  Config value "timeout" not set, using default 30s\n[INFO]  Connected to database\n[INFO]  Ready`).pipe(delay(60));
+    }
+
+    return of(`Preview not available for ${item.name}`).pipe(delay(30));
   }
 
   tree(path = '/'): Observable<WhitecapFileItem[]> {
@@ -202,9 +271,9 @@ export class ProductionLikeMockStorageProvider implements WhitecapStorageProvide
       const uploadId = `wcfm-prod-mock-upload-${specIndex}`;
 
       return concat(
-        of(this.progress(displayName, 10, 'uploading', uploadId)),
-        of(this.progress(displayName, 65, 'uploading', uploadId)).pipe(delay(120)),
-        of(this.progress(displayName, 100, 'completed', uploadId)).pipe(
+        of(this.progress(displayName, 10, 'uploading', uploadId, file.size)),
+        of(this.progress(displayName, 65, 'uploading', uploadId, file.size)).pipe(delay(120)),
+        of(this.progress(displayName, 100, 'completed', uploadId, file.size)).pipe(
           delay(200),
           map((done) => {
             const { parentPath, leafName } = this.resolveUploadTarget(uploadRoot, rel, file.name);
@@ -233,6 +302,9 @@ export class ProductionLikeMockStorageProvider implements WhitecapStorageProvide
             } else {
               this.items.set(parentPath, items.concat(this.file(resolved.finalName, parentPath, file.size)));
             }
+
+            const finalPath = `${normalizePath(parentPath)}/${resolved.finalName}`.replace(/\/+/g, '/');
+            this.uploadedFiles.set(finalPath, file);
 
             let finalLabel = resolved.finalName;
             if (rel?.includes('/')) {
@@ -377,12 +449,13 @@ export class ProductionLikeMockStorageProvider implements WhitecapStorageProvide
     percent: number,
     status: WhitecapUploadProgress['status'],
     uploadId: string,
+    fileSize: number,
   ): WhitecapUploadProgress {
     return {
       fileName,
       uploadId,
-      loaded: percent,
-      total: 100,
+      loaded: Math.round((percent / 100) * fileSize),
+      total: fileSize,
       percent,
       status,
     };

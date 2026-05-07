@@ -15,7 +15,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { DomSanitizer, SafeHtml, SafeResourceUrl } from '@angular/platform-browser';
 import { Subscription } from 'rxjs';
 import { DEFAULT_TOOLBAR_ACTIONS } from './default-toolbar-actions';
 import { BRAND_FILE_TYPE_SVGS } from './brand-file-type-svgs';
@@ -329,7 +329,10 @@ const UPLOAD_MIME_TO_EXTENSION: Readonly<Record<string, string>> = {
         @if (store.toasts().length) {
           <div class="wcfm-toast-stack" role="region" aria-label="Notifications" aria-live="polite">
             @for (toast of store.toasts(); track toast.kind) {
-              <div class="wcfm-toast" [class.is-error]="toast.variant === 'error'">{{ toast.message }}</div>
+              <div class="wcfm-toast" [class.is-error]="toast.variant === 'error'">
+                <span class="wcfm-icon wcfm-toast-icon" [innerHTML]="toast.variant === 'error' ? icons.toastError : icons.toastSuccess" aria-hidden="true"></span>
+                <span>{{ toast.message }}</span>
+              </div>
             }
           </div>
         }
@@ -703,6 +706,18 @@ const UPLOAD_MIME_TO_EXTENSION: Readonly<Record<string, string>> = {
                   <p class="wcfm-state">Loading preview…</p>
                 } @else if (previewKind() === 'image' && previewImageUrl(); as src) {
                   <img class="wcfm-preview-image" [src]="src" [alt]="item.name" />
+                } @else if (previewKind() === 'pdf' && previewPdfUrl(); as src) {
+                  <iframe class="wcfm-preview-pdf" [src]="src" title="PDF preview"></iframe>
+                } @else if (previewKind() === 'eml') {
+                  <div class="wcfm-preview-eml">
+                    @for (hdr of emlHeaders(); track hdr.key) {
+                      <div class="wcfm-preview-eml-row">
+                        <span class="wcfm-preview-eml-key">{{ hdr.key }}</span>
+                        <span class="wcfm-preview-eml-val">{{ hdr.value }}</span>
+                      </div>
+                    }
+                    <pre class="wcfm-preview-eml-body">{{ emlBody() }}</pre>
+                  </div>
                 } @else if (previewKind() === 'text' && previewText() !== null) {
                   <pre class="wcfm-preview-text">{{ previewText() }}</pre>
                 } @else {
@@ -1509,29 +1524,37 @@ const UPLOAD_MIME_TO_EXTENSION: Readonly<Record<string, string>> = {
     }
     .wcfm-toast {
       pointer-events: auto;
-      padding: 12px 14px;
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      padding: 11px 14px;
       border-radius: 8px;
       font-size: 13px;
-      line-height: 1.35;
-      color: #0f172a;
-      background: #fff;
-      border: 1px solid var(--wcfm-border-strong);
-      box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.06);
-      animation: wcfm-toast-in 0.2s ease-out;
+      font-weight: 500;
+      line-height: 1.4;
+      color: #14532d;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-left: 3px solid #16a34a;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.10), 0 2px 6px rgba(15, 23, 42, 0.04);
+      animation: wcfm-toast-in 0.22s ease-out;
     }
+    .wcfm-toast-icon { color: #16a34a; margin-top: 1px; }
     .wcfm-toast.is-error {
-      border-color: #fecaca;
-      background: #fef2f2;
       color: #991b1b;
+      background: #fef2f2;
+      border-color: #fecaca;
+      border-left-color: #dc2626;
     }
+    .wcfm-toast.is-error .wcfm-toast-icon { color: #dc2626; }
     @keyframes wcfm-toast-in {
       from {
         opacity: 0;
-        transform: translateY(-6px);
+        transform: translateX(10px);
       }
       to {
         opacity: 1;
-        transform: translateY(0);
+        transform: translateX(0);
       }
     }
     .wcfm-validation-banner {
@@ -2058,6 +2081,28 @@ const UPLOAD_MIME_TO_EXTENSION: Readonly<Record<string, string>> = {
       max-width: 100%; max-height: 18rem; object-fit: contain;
       display: block;
     }
+    .wcfm-preview-pdf {
+      width: 100%; height: 18rem;
+      border: none; border-radius: 4px; display: block;
+    }
+    .wcfm-preview-eml {
+      width: 100%; max-height: 22rem; overflow: auto;
+      background: #fff; border: 1px solid var(--wcfm-border);
+      border-radius: 4px; font-size: 12px;
+    }
+    .wcfm-preview-eml-row {
+      display: grid; grid-template-columns: 70px 1fr;
+      gap: 4px; padding: 4px 8px;
+      border-bottom: 1px solid var(--wcfm-border);
+    }
+    .wcfm-preview-eml-key { font-weight: 600; color: var(--wcfm-muted); }
+    .wcfm-preview-eml-val { word-break: break-word; }
+    .wcfm-preview-eml-body {
+      margin: 0; padding: 8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px; line-height: 1.4; color: #111;
+      white-space: pre-wrap; word-break: break-word;
+    }
     .wcfm-preview-text {
       width: 100%; max-height: 18rem; overflow: auto;
       margin: 0; padding: 8px;
@@ -2290,11 +2335,20 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
   readonly filterOpen = signal<boolean>(false);
   readonly filterDraft = signal<{ fileTypes?: string; owner?: string; dateFrom?: string; dateTo?: string }>({});
 
-  readonly showPreview = computed(() => this.previewPaneVisible());
+  readonly showPreview = computed(() => this.previewPaneVisible() && this.previewItem() !== null);
   readonly previewLoading = signal<boolean>(false);
-  readonly previewKind = signal<'image' | 'text' | 'none'>('none');
+  readonly previewKind = signal<'image' | 'text' | 'pdf' | 'eml' | 'none'>('none');
   readonly previewImageUrl = signal<string | null>(null);
+  readonly previewPdfUrl = signal<SafeResourceUrl | null>(null);
   readonly previewText = signal<string | null>(null);
+  readonly emlHeaders = computed(() => {
+    if (this.previewKind() !== 'eml') return [] as { key: string; value: string }[];
+    return this.parseEmlHeaders(this.previewText());
+  });
+  readonly emlBody = computed(() => {
+    if (this.previewKind() !== 'eml') return '';
+    return this.parseEmlBody(this.previewText());
+  });
   readonly previewItem = computed<WhitecapFileItem | null>(() => {
     const selected = this.store.selectedItems();
     if (selected.length === 1 && selected[0].type === 'file') {
@@ -3012,13 +3066,15 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
       return;
     }
 
+    const ext = item.extension?.toLowerCase();
+
     this.previewLoading.set(true);
     this.previewSub = provider.preview(item).subscribe({
       next: (result) => {
         this.previewLoading.set(false);
         if (typeof result === 'string') {
-          this.previewKind.set('text');
           this.previewText.set(result);
+          this.previewKind.set(ext === 'eml' ? 'eml' : 'text');
           return;
         }
         if (result.type.startsWith('image/')) {
@@ -3027,11 +3083,18 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
           this.previewKind.set('image');
           return;
         }
+        if (result.type === 'application/pdf' || ext === 'pdf') {
+          this.previewObjectUrl = URL.createObjectURL(result);
+          this.previewPdfUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(this.previewObjectUrl));
+          this.previewKind.set('pdf');
+          return;
+        }
+        const isEml = result.type === 'message/rfc822' || ext === 'eml';
         result
           .text()
           .then((text) => {
             this.previewText.set(text);
-            this.previewKind.set('text');
+            this.previewKind.set(isEml ? 'eml' : 'text');
           })
           .catch(() => this.previewKind.set('none'));
       },
@@ -3050,7 +3113,38 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
       this.previewObjectUrl = null;
     }
     this.previewImageUrl.set(null);
+    this.previewPdfUrl.set(null);
     this.previewText.set(null);
+  }
+
+  private parseEmlHeaders(text: string | null): { key: string; value: string }[] {
+    if (!text) return [];
+    const displayed = ['from', 'to', 'cc', 'bcc', 'subject', 'date', 'reply-to'];
+    const headerSection = text.split(/\r?\n\r?\n/)[0] ?? '';
+    // Unfold folded header lines (RFC 2822: continuation lines start with whitespace)
+    const unfolded: string[] = [];
+    for (const line of headerSection.split(/\r?\n/)) {
+      if (/^\s/.test(line) && unfolded.length > 0) {
+        unfolded[unfolded.length - 1] += ' ' + line.trim();
+      } else {
+        unfolded.push(line);
+      }
+    }
+    return unfolded
+      .filter((line) => {
+        const colon = line.indexOf(':');
+        return colon > 0 && displayed.includes(line.slice(0, colon).trim().toLowerCase());
+      })
+      .map((line) => {
+        const colon = line.indexOf(':');
+        return { key: line.slice(0, colon).trim(), value: line.slice(colon + 1).trim() };
+      });
+  }
+
+  private parseEmlBody(text: string | null): string {
+    if (!text) return '';
+    const parts = text.split(/\r?\n\r?\n/);
+    return parts.slice(1).join('\n\n').trim();
   }
 
   onSelectAllChange(event: Event): void {
@@ -3097,6 +3191,8 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
       chevDown: safe(stroke('<path d="M4 6l4 4 4-4"/>')),
       folderBrand: safe(BRAND_FILE_TYPE_SVGS.folder),
       dot: safe(stroke('<circle cx="8" cy="8" r="1"/>')),
+      toastSuccess: safe(stroke('<circle cx="8" cy="8" r="5.5"/><path d="M5.5 8l2 2.5 3-4"/>')),
+      toastError: safe(stroke('<circle cx="8" cy="8" r="5.5"/><path d="M6 6l4 4M10 6l-4 4"/>')),
     };
   }
 

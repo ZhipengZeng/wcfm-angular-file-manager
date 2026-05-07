@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"d:\\\\AProjects\\\\wcfm-angular-file-manager\\\\projects\" -Recurse -Depth 2 -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Sort-Object)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(cd /d \"d:\\\\AProjects\\\\wcfm-angular-file-manager\")",
+      "Bash(ng build *)",
+      "PowerShell(ng build whitecap-file-manager 2>&1)"
+    ]
+  }
+}
