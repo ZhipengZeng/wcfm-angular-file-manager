@@ -1,13 +1,21 @@
 # WhitecapFileManager
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 20.2.0.
+This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.2.11.
+
+## For future releases
+
+Bump version in projects/whitecap-file-manager/package.json
+
+```bash
+ng build whitecap-file-manager && npm publish ./dist/whitecap-file-manager
+```
 
 ## Development server
 
 To start a local development server, run:
 
 ```bash
-npm i && ng build whitecap-file-manager && ng serve demo
+npm i && ng build whitecap-file-manager && ng serve demo --port=4201
 ```
 
 Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
