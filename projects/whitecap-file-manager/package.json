@@ -1,12 +1,21 @@
 {
-  "name": "whitecap-file-manager",
-  "version": "0.0.1",
+  "name": "@whitecap/file-manager",
+  "version": "1.0.0",
+  "description": "Internal Angular file manager component",
+  "author": "Whitecap Canada",
+  "license": "UNLICENSED",
   "peerDependencies": {
     "@angular/common": "^21.2.0",
-    "@angular/core": "^21.2.0"
+    "@angular/core": "^21.2.0",
+    "@angular/forms": "^21.2.0",
+    "@angular/platform-browser": "^21.2.0",
+    "rxjs": "~7.8.0"
   },
   "dependencies": {
     "tslib": "^2.3.0"
   },
-  "sideEffects": false
+  "sideEffects": false,
+  "publishConfig": {
+    "registry": "https://pkgs.dev.azure.com/WhitecapCanadaInc/_packaging/whitecap-npm/npm/registry/"
+  }
 }

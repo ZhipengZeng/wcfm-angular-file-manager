@@ -7,7 +7,8 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(cd /d \"d:\\\\AProjects\\\\wcfm-angular-file-manager\")",
       "Bash(ng build *)",
-      "PowerShell(ng build whitecap-file-manager 2>&1)"
+      "PowerShell(ng build whitecap-file-manager 2>&1)",
+      "PowerShell([System.Text.Encoding]::UTF8.GetString\\([System.Convert]::FromBase64String\\(\"OjlZNWUwNUl2OFZMa090dzNRR2dIdlczTFpWTmZnM0dwbkFETkJzYXVESW1VRGFCbkU0OWJKUVFKOTlDRUFDQUFBQUF0b2txM0FBQVNBWkRPNVZlcA==\"\\)\\))"
     ]
   }
 }
