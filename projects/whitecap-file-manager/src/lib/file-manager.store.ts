@@ -139,6 +139,7 @@ export class FileManagerStore {
 
   private listSub?: Subscription;
   private treeSub?: Subscription;
+  private serverRefreshSub?: Subscription;
   private readonly toastTimers = new Map<WhitecapToastKind, ReturnType<typeof setTimeout>>();
   private readonly toastDismissMs = 4500;
 
@@ -325,6 +326,24 @@ export class FileManagerStore {
           this.error.set({ code: 'list_failed', message: 'Could not load folder contents.' });
         },
       });
+  }
+
+  hardRefresh(): void {
+    const provider = this.provider();
+    if (!provider?.refresh) {
+      this.refresh();
+      return;
+    }
+    this.serverRefreshSub?.unsubscribe();
+    this.loading.set(true);
+    this.error.set(null);
+    this.serverRefreshSub = provider.refresh().subscribe({
+      next: () => this.refresh(),
+      error: () => {
+        this.loading.set(false);
+        this.error.set({ code: 'refresh_failed', message: 'Could not refresh from server.' });
+      },
+    });
   }
 
   refreshTree(): void {

@@ -116,6 +116,8 @@ export interface WhitecapStorageProvider {
   capabilities?: WhitecapProviderCapabilities;
   list(query: WhitecapFileQuery): Observable<WhitecapFilePage>;
   tree?(path?: string): Observable<WhitecapFileItem[]>;
+  /** Called by the toolbar Refresh button to force a server-side reload before re-listing. */
+  refresh?(): Observable<void>;
   createFolder(path: string, name: string): Observable<WhitecapOperationResult<WhitecapFileItem>>;
   upload(options: WhitecapUploadOptions): Observable<WhitecapUploadProgress>;
   download(item: WhitecapFileItem): Observable<Blob>;

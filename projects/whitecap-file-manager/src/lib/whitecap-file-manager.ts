@@ -2908,7 +2908,7 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
     this.closeContextMenu();
 
     if (actionId === 'refresh') {
-      this.store.refresh();
+      this.store.hardRefresh();
       return;
     }
 
