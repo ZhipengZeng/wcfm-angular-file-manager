@@ -180,6 +180,22 @@ const UPLOAD_MIME_TO_EXTENSION: Readonly<Record<string, string>> = {
             }
           </button>
 
+          <button
+            type="button"
+            class="wcfm-tbtn"
+            [class.is-active]="previewPaneOpen()"
+            [attr.aria-pressed]="previewPaneOpen()"
+            [attr.title]="previewPaneOpen() ? 'Hide preview pane' : 'Show preview pane'"
+            (click)="togglePreviewPane()"
+          >
+            <span class="wcfm-icon" [innerHTML]="icons.previewPane" aria-hidden="true"></span>
+            @if (previewPaneOpen()) {
+              <span>Hide Preview</span>
+            } @else {
+              <span>Preview</span>
+            }
+          </button>
+
           @if (!store.flatFilesMode()) {
             <div class="wcfm-viewgroup" role="group" aria-label="View mode">
               <button
@@ -2190,8 +2206,8 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
   readonly enableFolderUpload = input<boolean>(true);
   readonly uploadValidation = input<WhitecapUploadValidationConfig | null>(null);
   readonly defaultDuplicateStrategy = input<WhitecapDuplicateStrategy>('ask');
-  /** When false, the preview aside is hidden (preview loading/rendering logic still runs when a file is selected). */
-  readonly previewPaneVisible = input<boolean>(true);
+  /** Sets the initial visibility of the preview pane. The user can toggle it via the toolbar button. Defaults to false. */
+  readonly previewPaneVisible = input<boolean>(false);
   /** CSS length for the explorer shell (e.g. `600px`, `42rem`, `min(70vh, 48rem)`). Fills the host; inner panes scroll. */
   readonly height = input<string | undefined>(undefined);
 
@@ -2344,7 +2360,8 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
   readonly filterOpen = signal<boolean>(false);
   readonly filterDraft = signal<{ fileTypes?: string; owner?: string; dateFrom?: string; dateTo?: string }>({});
 
-  readonly showPreview = computed(() => this.previewPaneVisible() && this.previewItem() !== null);
+  readonly previewPaneOpen = signal<boolean>(false);
+  readonly showPreview = computed(() => this.previewPaneOpen());
   readonly previewLoading = signal<boolean>(false);
   readonly previewKind = signal<'image' | 'text' | 'pdf' | 'eml' | 'none'>('none');
   readonly previewImageUrl = signal<string | null>(null);
@@ -2450,6 +2467,7 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    this.previewPaneOpen.set(this.previewPaneVisible());
     this.store.refresh();
   }
 
@@ -2535,6 +2553,10 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
   onSearchInput(event: Event): void {
     const target = event.target as HTMLInputElement;
     this.store.setSearch(target.value);
+  }
+
+  togglePreviewPane(): void {
+    this.previewPaneOpen.update((v) => !v);
   }
 
   toggleFlatFilesMode(): void {
@@ -3224,6 +3246,7 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
         ),
       ),
       grid: safe(stroke('<rect x="3" y="3" width="4" height="4" rx="0.5"/><rect x="9" y="3" width="4" height="4" rx="0.5"/><rect x="3" y="9" width="4" height="4" rx="0.5"/><rect x="9" y="9" width="4" height="4" rx="0.5"/>')),
+      previewPane: safe(stroke('<rect x="2" y="3" width="12" height="10" rx="1.2"/><path d="M9.5 3.5V12.5"/>')),
       search: safe(stroke('<circle cx="7" cy="7" r="4"/><path d="M10 10l3 3"/>')),
       chevRight: safe(stroke('<path d="M6 4l4 4-4 4"/>')),
       chevDown: safe(stroke('<path d="M4 6l4 4 4-4"/>')),
