@@ -25,6 +25,7 @@ import {
   WhitecapDuplicateStrategy,
   WhitecapFileItem,
   WhitecapOperationError,
+  WhitecapActionTriggeredEvent,
   WhitecapSortField,
   WhitecapStorageProvider,
   WhitecapToolbarAction,
@@ -35,7 +36,9 @@ import {
   WhitecapUploadProgress,
 } from './models';
 
-type ContextAction = 'open' | 'rename' | 'move' | 'copy' | 'download' | 'delete';
+type ContextAction = string;
+
+const TOOLBAR_ONLY_IDS = new Set(['refresh', 'new-folder', 'upload']);
 type DialogAction = 'new-folder' | 'rename' | 'move' | 'copy' | 'delete' | null;
 
 interface ContextMenuState {
@@ -740,8 +743,8 @@ const UPLOAD_MIME_TO_EXTENSION: Readonly<Record<string, string>> = {
 
       @if (contextMenu(); as menu) {
         <div class="wcfm-ctx" [style.left.px]="menu.x" [style.top.px]="menu.y" (click)="$event.stopPropagation()">
-          @for (action of contextActions; track action) {
-            <button type="button" class="wcfm-ctx-item" (click)="onContextAction(action)">
+          @for (action of contextActions(); track action) {
+            <button type="button" class="wcfm-ctx-item" [disabled]="isContextActionDisabled(action, menu.item)" (click)="onContextAction(action)">
               {{ contextActionLabel(action) }}
             </button>
           }
@@ -2208,6 +2211,7 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
   @Output() readonly fileMoved = new EventEmitter<string>();
   @Output() readonly fileCopied = new EventEmitter<string>();
   @Output() readonly selectionChanged = new EventEmitter<WhitecapFileItem[]>();
+  @Output() readonly actionTriggered = new EventEmitter<WhitecapActionTriggeredEvent>();
 
   readonly fileUploadInput = viewChild<ElementRef<HTMLInputElement>>('fileUploadInput');
   readonly folderUploadInput = viewChild<ElementRef<HTMLInputElement>>('folderUploadInput');
@@ -2258,7 +2262,12 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
   readonly supportsFolderUpload = computed(
     () => this.enableFolderUpload() && (this.provider()?.capabilities?.supportsFolderUpload ?? true),
   );
-  readonly contextActions: ContextAction[] = ['open', 'rename', 'move', 'copy', 'download', 'delete'];
+  readonly contextActions = computed<string[]>(() => [
+    'open',
+    ...this.actions()
+      .filter((a) => !TOOLBAR_ONLY_IDS.has(a.id))
+      .map((a) => a.id),
+  ]);
 
   /** Folder tree pane width when the tree column is visible (not flat mode). */
   readonly treePaneWidthPx = signal(WCFM_TREE_PANE_DEFAULT_PX);
@@ -2612,11 +2621,14 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
 
     if (action === 'download') {
       this.store.downloadSelected((fileName, blob) => this.downloadBlob(fileName, blob));
+      return;
     }
+
+    this.actionTriggered.emit({ actionId: action, items: this.store.selectedItems() });
   }
 
   contextActionLabel(action: ContextAction): string {
-    const labels: Record<ContextAction, string> = {
+    const builtIn: Record<string, string> = {
       open: 'Open',
       rename: 'Rename',
       move: 'Move',
@@ -2624,7 +2636,7 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
       download: 'Download',
       delete: 'Delete',
     };
-    return labels[action];
+    return builtIn[action] ?? this.actions().find((a) => a.id === action)?.label ?? action;
   }
 
   openItem(item: WhitecapFileItem): void {
@@ -2951,18 +2963,41 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
       this.store.downloadSelected((fileName, blob) => this.downloadBlob(fileName, blob));
       return;
     }
+
+    this.actionTriggered.emit({ actionId, items: this.store.selectedItems() });
   }
 
   isActionDisabled(actionId: string): boolean {
-    const selectedCount = this.store.selectedItems().length;
+    const selected = this.store.selectedItems();
     if (actionId === 'rename') {
-      return selectedCount !== 1;
+      return selected.length !== 1;
     }
 
-    if (actionId === 'move' || actionId === 'copy' || actionId === 'download' || actionId === 'delete') {
-      return selectedCount < 1;
+    if (actionId === 'download') {
+      return selected.length !== 1 || selected[0].type !== 'file';
     }
 
+    if (actionId === 'move' || actionId === 'copy' || actionId === 'delete') {
+      return selected.length < 1;
+    }
+
+    const action = this.actions().find((a) => a.id === actionId);
+    if (action?.requiresSelection) {
+      return selected.length < 1;
+    }
+
+    return false;
+  }
+
+  isContextActionDisabled(action: ContextAction, item: WhitecapFileItem): boolean {
+    if (action === 'download') {
+      const inSelection = this.store.selectedIds().has(item.id);
+      if (inSelection) {
+        const selected = this.store.selectedItems();
+        return selected.length !== 1 || selected[0].type !== 'file';
+      }
+      return item.type === 'folder';
+    }
     return false;
   }
 
@@ -2992,7 +3027,10 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
       delete: this.icons.delete,
       download: this.icons.download,
     };
-    return map[actionId] ?? this.icons.dot;
+    if (map[actionId]) return map[actionId];
+    const customIcon = this.actions().find((a) => a.id === actionId)?.icon;
+    if (customIcon) return this.sanitizer.bypassSecurityTrustHtml(customIcon);
+    return this.icons.dot;
   }
 
   /** Opens the filter panel (no-op in flat file list mode). Call from host UI if you removed the built-in filter control. */

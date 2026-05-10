@@ -1,6 +1,6 @@
 {
   "name": "@whitecap/file-manager",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Internal Angular file manager component",
   "author": "Whitecap Canada",
   "license": "UNLICENSED",

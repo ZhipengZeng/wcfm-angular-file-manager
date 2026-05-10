@@ -132,6 +132,13 @@ export interface WhitecapToolbarAction {
   id: string;
   label: string;
   icon?: string;
+  /** When true, the action is disabled in the toolbar and context menu when no items are selected. */
+  requiresSelection?: boolean;
+}
+
+export interface WhitecapActionTriggeredEvent {
+  actionId: string;
+  items: WhitecapFileItem[];
 }
 
 export interface WhitecapUploadValidationConfig {
