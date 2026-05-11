@@ -70,9 +70,9 @@ The component exports from `public-api.ts`:
 - `DEFAULT_TOOLBAR_ACTIONS` — default toolbar config
 - `WHITECAP_STORAGE_PROVIDER` — injection token
 
-**Inputs:** `provider`, `initialPath`, `actions`, `enableFolderUpload`, `uploadValidation`, `defaultDuplicateStrategy`, `previewPaneVisible`, `height`
+**Inputs:** `provider`, `initialPath`, `actions`, `enableFolderUpload`, `uploadValidation`, `defaultDuplicateStrategy`, `defaultPageSize`, `visibleFileTypes`, `previewPaneVisible`, `height`
 
-**Outputs:** `folderChanged`, `fileOpened`, `selectionChanged`, `uploadStarted`, `uploadCompleted`, `uploadFailed`, `fileDeleted`, `fileRenamed`, `fileMoved`, `fileCopied`
+**Outputs:** `folderChanged`, `fileOpened`, `selectionChanged`, `fileCreated`, `uploadStarted`, `uploadCompleted`, `uploadFailed`, `fileDeleted`, `fileRenamed`, `fileMoved`, `fileCopied`
 
 ### Styling
 

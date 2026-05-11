@@ -2215,8 +2215,11 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
   readonly enableFolderUpload = input<boolean>(true);
   readonly uploadValidation = input<WhitecapUploadValidationConfig | null>(null);
   readonly defaultDuplicateStrategy = input<WhitecapDuplicateStrategy>('ask');
+  readonly defaultPageSize = input<number>(50);
   /** Sets the initial visibility of the preview pane. The user can toggle it via the toolbar button. Defaults to false. */
   readonly previewPaneVisible = input<boolean>(false);
+  /** Restricts visible file types globally (ANDed with any active user filter). Pass null to show all types. */
+  readonly visibleFileTypes = input<string[] | null>(null);
   /** CSS length for the explorer shell (e.g. `600px`, `42rem`, `min(70vh, 48rem)`). Fills the host; inner panes scroll. */
   readonly height = input<string | undefined>(undefined);
 
@@ -2236,6 +2239,7 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
   @Output() readonly fileMoved = new EventEmitter<string>();
   @Output() readonly fileCopied = new EventEmitter<string>();
   @Output() readonly selectionChanged = new EventEmitter<WhitecapFileItem[]>();
+  @Output() readonly fileCreated = new EventEmitter<WhitecapFileItem>();
   @Output() readonly actionTriggered = new EventEmitter<WhitecapActionTriggeredEvent>();
 
   readonly fileUploadInput = viewChild<ElementRef<HTMLInputElement>>('fileUploadInput');
@@ -2304,6 +2308,8 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
 
   readonly duplicateStrategy = signal<WhitecapDuplicateStrategy>('ask');
   readonly validationIssues = signal<WhitecapUploadValidationIssue[]>([]);
+  readonly clipboardItems = signal<WhitecapFileItem[]>([]);
+  readonly clipboardMode = signal<'copy' | 'cut' | null>(null);
   readonly contextMenu = signal<ContextMenuState | null>(null);
   readonly dialogAction = signal<DialogAction>(null);
   readonly dialogValue = signal<string>('');
@@ -2440,6 +2446,14 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
     });
 
     effect(() => {
+      this.store.setPageSize(this.defaultPageSize());
+    });
+
+    effect(() => {
+      this.store.setVisibleFileTypes(this.visibleFileTypes());
+    });
+
+    effect(() => {
       this.selectionChanged.emit(this.store.selectedItems());
     });
 
@@ -2487,6 +2501,83 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
     this.closeContextMenu();
     this.closeDialog();
     this.filterOpen.set(false);
+  }
+
+  @HostListener('window:keydown.delete', ['$event'])
+  onDeleteKey(event: Event): void {
+    if (this.isShortcutBlocked(event)) return;
+    if (this.store.selectedItems().length) {
+      this.openDialog('delete');
+    }
+  }
+
+  @HostListener('window:keydown.F2', ['$event'])
+  onF2Key(event: Event): void {
+    if (this.isShortcutBlocked(event)) return;
+    const selected = this.store.selectedItems();
+    if (selected.length === 1) {
+      this.openDialog('rename', selected[0]);
+    }
+  }
+
+  @HostListener('window:keydown.enter', ['$event'])
+  onEnterKey(event: Event): void {
+    if (this.isShortcutBlocked(event)) return;
+    const target = event.target as HTMLElement;
+    // Item rows/cards already have their own (keydown.enter) binding — don't double-fire
+    if (target.closest('.wcfm-row, .wcfm-card')) return;
+    const selected = this.store.selectedItems();
+    if (selected.length === 1) {
+      this.openItem(selected[0]);
+    }
+  }
+
+  @HostListener('window:keydown.control.c', ['$event'])
+  onCopyKey(event: Event): void {
+    if (this.isShortcutBlocked(event)) return;
+    const selected = this.store.selectedItems();
+    if (!selected.length) return;
+    this.clipboardItems.set(selected);
+    this.clipboardMode.set('copy');
+    event.preventDefault();
+  }
+
+  @HostListener('window:keydown.control.x', ['$event'])
+  onCutKey(event: Event): void {
+    if (this.isShortcutBlocked(event)) return;
+    const selected = this.store.selectedItems();
+    if (!selected.length) return;
+    this.clipboardItems.set(selected);
+    this.clipboardMode.set('cut');
+    event.preventDefault();
+  }
+
+  @HostListener('window:keydown.control.v', ['$event'])
+  onPasteKey(event: Event): void {
+    if (this.isShortcutBlocked(event)) return;
+    const items = this.clipboardItems();
+    const mode = this.clipboardMode();
+    if (!items.length || !mode) return;
+    const targetPath = this.store.currentPath();
+    const previousSelection = this.store.selectedIds();
+    this.store.selectedIds.set(new Set(items.map((i) => i.id)));
+    if (mode === 'cut') {
+      this.store.moveSelected(targetPath, () => this.fileMoved.emit(targetPath));
+      this.clipboardItems.set([]);
+      this.clipboardMode.set(null);
+    } else {
+      this.store.copySelected(targetPath, () => this.fileCopied.emit(targetPath));
+    }
+    this.store.selectedIds.set(previousSelection);
+    event.preventDefault();
+  }
+
+  private isShortcutBlocked(event: Event): boolean {
+    if (!this.hostEl.nativeElement.contains(event.target as Node)) return true;
+    const target = event.target as HTMLElement;
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return true;
+    if (this.dialogAction() || this.contextMenu()) return true;
+    return false;
   }
 
   onSurfaceClick(): void {
@@ -3447,7 +3538,11 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
 
     if (action === 'new-folder') {
       if (this.dialogValue().trim()) {
-        this.store.createFolder(this.dialogValue().trim());
+        this.store.createFolder(this.dialogValue().trim(), (result) => {
+          if (result.data) {
+            this.fileCreated.emit(result.data);
+          }
+        });
       }
       this.closeDialog();
       return;

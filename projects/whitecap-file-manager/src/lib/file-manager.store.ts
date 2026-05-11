@@ -107,6 +107,8 @@ export class FileManagerStore {
   readonly total = signal<number>(0);
   readonly selectedIds = signal<Set<string>>(new Set<string>());
   readonly filters = signal<WhitecapFilters>({});
+  /** Component-level file type restriction; ANDed with user's filter panel selection in refresh(). */
+  readonly visibleFileTypes = signal<string[] | null>(null);
   readonly pageIndex = signal<number>(0);
   readonly pageSize = signal<number>(50);
 
@@ -194,6 +196,11 @@ export class FileManagerStore {
   clearFilters(): void {
     this.filters.set({});
     this.pageIndex.set(0);
+    this.refresh();
+  }
+
+  setVisibleFileTypes(types: string[] | null): void {
+    this.visibleFileTypes.set(types?.length ? types : null);
     this.refresh();
   }
 
@@ -295,14 +302,24 @@ export class FileManagerStore {
     }
 
     const filters = this.filters();
-    const hasFilters = !!(filters.fileTypes?.length || filters.owner || filters.dateFrom || filters.dateTo);
+    const visibleTypes = this.visibleFileTypes();
+    let effectiveFileTypes: string[] | undefined;
+    if (visibleTypes?.length) {
+      effectiveFileTypes = filters.fileTypes?.length
+        ? filters.fileTypes.filter((t) => visibleTypes.includes(t))
+        : visibleTypes;
+    } else {
+      effectiveFileTypes = filters.fileTypes?.length ? filters.fileTypes : undefined;
+    }
+    const effectiveFilters: WhitecapFilters = { ...filters, fileTypes: effectiveFileTypes };
+    const hasFilters = !!(effectiveFileTypes?.length || filters.owner || filters.dateFrom || filters.dateTo);
     const query: WhitecapFileQuery = {
       path: this.flatFilesMode() ? '/' : this.currentPath(),
       flatFiles: this.flatFilesMode() ? true : undefined,
       search: this.search() || undefined,
       sortBy: this.sortBy(),
       sortDirection: this.sortDirection(),
-      filters: hasFilters ? filters : undefined,
+      filters: hasFilters ? effectiveFilters : undefined,
       pagination: {
         pageIndex: this.pageIndex(),
         pageSize: this.pageSize(),
