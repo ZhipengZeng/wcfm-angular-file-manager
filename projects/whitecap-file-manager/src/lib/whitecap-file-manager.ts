@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import {
   Component,
   computed,
+  contentChild,
   effect,
   ElementRef,
   EventEmitter,
@@ -35,6 +36,7 @@ import {
   WhitecapUploadValidationIssue,
   WhitecapUploadProgress,
 } from './models';
+import { WcfmTileItemDirective } from './tile-item.directive';
 
 type ContextAction = string;
 
@@ -81,7 +83,7 @@ const UPLOAD_MIME_TO_EXTENSION: Readonly<Record<string, string>> = {
 
 @Component({
   selector: 'whitecap-file-manager',
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, WcfmTileItemDirective],
   providers: [FileManagerStore],
   host: {
     '[class.wcfm-fixed-height]': 'hasFixedHeight()',
@@ -594,45 +596,49 @@ const UPLOAD_MIME_TO_EXTENSION: Readonly<Record<string, string>> = {
                     (dragleave)="item.type === 'folder' && onFolderDragLeave(item.path)"
                     (drop)="item.type === 'folder' && onFolderDrop(item.path, $event)"
                   >
-                    <div class="wcfm-card-header">
+                    @if (tileItemDir(); as dir) {
+                      <ng-container *ngTemplateOutlet="dir.templateRef; context: { $implicit: item, selected: store.selectedIds().has(item.id) }"></ng-container>
+                    } @else {
+                      <div class="wcfm-card-header">
+                        <button
+                          type="button"
+                          class="wcfm-card-icon-hit"
+                          tabindex="-1"
+                          [attr.title]="item.name"
+                          (click)="onItemRowClick(item, $event)"
+                          (dblclick)="openItem(item)"
+                        >
+                          @if (item.type === 'folder') {
+                            <span class="wcfm-icon wcfm-icon-card wcfm-folder-icon" [innerHTML]="icons.folderBrand" aria-hidden="true"></span>
+                          } @else {
+                            <span
+                              [attr.class]="'wcfm-icon wcfm-icon-card wcfm-file-icon kind-' + fileIconKind(item)"
+                              [innerHTML]="fileIconFor(item)"
+                              aria-hidden="true"
+                            ></span>
+                          }
+                        </button>
+                        <label class="wcfm-check wcfm-card-check">
+                          <input
+                            type="checkbox"
+                            [attr.aria-label]="'Select ' + item.name"
+                            [checked]="store.selectedIds().has(item.id)"
+                            (click)="onCheckboxClick(item, $event)"
+                          />
+                        </label>
+                      </div>
                       <button
                         type="button"
-                        class="wcfm-card-icon-hit"
+                        class="wcfm-card-body"
                         tabindex="-1"
                         [attr.title]="item.name"
                         (click)="onItemRowClick(item, $event)"
                         (dblclick)="openItem(item)"
                       >
-                        @if (item.type === 'folder') {
-                          <span class="wcfm-icon wcfm-icon-card wcfm-folder-icon" [innerHTML]="icons.folderBrand" aria-hidden="true"></span>
-                        } @else {
-                          <span
-                            [attr.class]="'wcfm-icon wcfm-icon-card wcfm-file-icon kind-' + fileIconKind(item)"
-                            [innerHTML]="fileIconFor(item)"
-                            aria-hidden="true"
-                          ></span>
-                        }
+                        <span class="wcfm-card-name">{{ item.name }}</span>
+                        <span class="wcfm-card-meta">{{ item.type === 'folder' ? 'Folder' : formatSize(item.size) }}</span>
                       </button>
-                      <label class="wcfm-check wcfm-card-check">
-                        <input
-                          type="checkbox"
-                          [attr.aria-label]="'Select ' + item.name"
-                          [checked]="store.selectedIds().has(item.id)"
-                          (click)="onCheckboxClick(item, $event)"
-                        />
-                      </label>
-                    </div>
-                    <button
-                      type="button"
-                      class="wcfm-card-body"
-                      tabindex="-1"
-                      [attr.title]="item.name"
-                      (click)="onItemRowClick(item, $event)"
-                      (dblclick)="openItem(item)"
-                    >
-                      <span class="wcfm-card-name">{{ item.name }}</span>
-                      <span class="wcfm-card-meta">{{ item.type === 'folder' ? 'Folder' : formatSize(item.size) }}</span>
-                    </button>
+                    }
                   </div>
                 }
               </div>
@@ -2232,6 +2238,7 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
   readonly fileUploadInput = viewChild<ElementRef<HTMLInputElement>>('fileUploadInput');
   readonly folderUploadInput = viewChild<ElementRef<HTMLInputElement>>('folderUploadInput');
   readonly dialogInput = viewChild<ElementRef<HTMLInputElement>>('dialogInput');
+  readonly tileItemDir = contentChild(WcfmTileItemDirective);
 
   readonly store = inject(FileManagerStore);
   readonly uploadCompletedCount = computed(
