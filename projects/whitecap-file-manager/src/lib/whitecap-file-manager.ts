@@ -37,6 +37,7 @@ import {
   WhitecapUploadProgress,
 } from './models';
 import { WcfmTileItemDirective } from './tile-item.directive';
+import { WcfmPreviewDirective } from './preview.directive';
 
 type ContextAction = string;
 
@@ -83,7 +84,7 @@ const UPLOAD_MIME_TO_EXTENSION: Readonly<Record<string, string>> = {
 
 @Component({
   selector: 'whitecap-file-manager',
-  imports: [CommonModule, FormsModule, WcfmTileItemDirective],
+  imports: [CommonModule, FormsModule, WcfmTileItemDirective, WcfmPreviewDirective],
   providers: [FileManagerStore],
   host: {
     '[class.wcfm-fixed-height]': 'hasFixedHeight()',
@@ -727,7 +728,9 @@ const UPLOAD_MIME_TO_EXTENSION: Readonly<Record<string, string>> = {
                 <h3 class="wcfm-preview-title">{{ item.name }}</h3>
               </header>
               <div class="wcfm-preview-body">
-                @if (previewLoading()) {
+                @if (previewDir(); as dir) {
+                  <ng-container *ngTemplateOutlet="dir.templateRef; context: { $implicit: item, loading: previewLoading() }"></ng-container>
+                } @else if (previewLoading()) {
                   <p class="wcfm-state">Loading preview…</p>
                 } @else if (previewKind() === 'image' && previewImageUrl(); as src) {
                   <img class="wcfm-preview-image" [src]="src" [alt]="item.name" />
@@ -2239,6 +2242,7 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
   readonly folderUploadInput = viewChild<ElementRef<HTMLInputElement>>('folderUploadInput');
   readonly dialogInput = viewChild<ElementRef<HTMLInputElement>>('dialogInput');
   readonly tileItemDir = contentChild(WcfmTileItemDirective);
+  readonly previewDir = contentChild(WcfmPreviewDirective);
 
   readonly store = inject(FileManagerStore);
   readonly uploadCompletedCount = computed(
@@ -2999,15 +3003,26 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
   isActionDisabled(actionId: string): boolean {
     const selected = this.store.selectedItems();
     if (actionId === 'rename') {
-      return selected.length !== 1;
+      if (selected.length !== 1) return true;
+      return selected[0].permissions?.canRename === false;
     }
 
     if (actionId === 'download') {
-      return selected.length !== 1 || selected[0].type !== 'file';
+      if (selected.length !== 1 || selected[0].type !== 'file') return true;
+      return selected[0].permissions?.canDownload === false;
     }
 
-    if (actionId === 'move' || actionId === 'copy' || actionId === 'delete') {
-      return selected.length < 1;
+    if (actionId === 'move') {
+      if (selected.length < 1) return true;
+      return selected.some((item) => item.permissions?.canMove === false);
+    }
+
+    if (actionId === 'copy' || actionId === 'delete') {
+      if (selected.length < 1) return true;
+      if (actionId === 'delete') {
+        return selected.some((item) => item.permissions?.canDelete === false);
+      }
+      return false;
     }
 
     const action = this.actions().find((a) => a.id === actionId);
@@ -3019,14 +3034,25 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
   }
 
   isContextActionDisabled(action: ContextAction, item: WhitecapFileItem): boolean {
+    const effectiveItems = this.store.selectedIds().has(item.id) ? this.store.selectedItems() : [item];
+
     if (action === 'download') {
-      const inSelection = this.store.selectedIds().has(item.id);
-      if (inSelection) {
-        const selected = this.store.selectedItems();
-        return selected.length !== 1 || selected[0].type !== 'file';
-      }
-      return item.type === 'folder';
+      if (effectiveItems.length !== 1 || effectiveItems[0].type !== 'file') return true;
+      return effectiveItems[0].permissions?.canDownload === false;
     }
+
+    if (action === 'rename') {
+      return item.permissions?.canRename === false;
+    }
+
+    if (action === 'delete') {
+      return effectiveItems.some((i) => i.permissions?.canDelete === false);
+    }
+
+    if (action === 'move') {
+      return effectiveItems.some((i) => i.permissions?.canMove === false);
+    }
+
     return false;
   }
 

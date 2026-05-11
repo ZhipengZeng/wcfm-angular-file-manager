@@ -17,6 +17,13 @@ export interface WhitecapOperationError {
   details?: Record<string, unknown>;
 }
 
+export interface WhitecapFileItemPermissions {
+  canRename?: boolean;
+  canDelete?: boolean;
+  canMove?: boolean;
+  canDownload?: boolean;
+}
+
 export interface WhitecapFileItem {
   id: string;
   name: string;
@@ -35,6 +42,8 @@ export interface WhitecapFileItem {
   thumbnailUrl?: string;
   downloadUrl?: string;
   metadata?: Record<string, unknown>;
+  /** Per-item permission overrides. Undefined means allowed; `false` explicitly disables that action. */
+  permissions?: WhitecapFileItemPermissions;
 }
 
 export interface WhitecapFileQuery {
