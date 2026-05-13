@@ -106,6 +106,7 @@ Toggle the preview pane with the **Preview** toolbar button (or set the initial 
 - **Text / string** — rendered as plain text.
 - If `preview` is not implemented or returns an error, a fallback message is shown.
 - Provide a **custom preview template** via `[wcfmPreview]` content projection for full control.
+- **`previewableExtensions` input** — restrict which extensions the built-in preview will attempt to load (e.g. `['pdf', 'png', 'txt']`). Files with other extensions show the "no preview" state without calling `provider.preview()`. Pass `null` (default) to allow all types the provider supports.
 
 ---
 

@@ -83,6 +83,7 @@ export class FilesFeatureComponent {
 | `defaultPageSize` | Initial page size (default `50`). |
 | `visibleFileTypes` | `string[] \| null` — component-level file extension restriction, ANDed with any active filter. Pass `null` to show all types. |
 | `previewPaneVisible` | Sets the **initial** visibility of the preview pane (default `false`). The user can toggle it via the Preview toolbar button. |
+| `previewableExtensions` | `string[] \| null` — restrict which extensions the built-in preview pane will attempt to load (e.g. `['pdf', 'png', 'txt']`). Files with other extensions show the "no preview" state without calling `provider.preview()`. Pass `null` (default) to allow all types the provider supports. Leading dots are stripped automatically, so `'.pdf'` and `'pdf'` are equivalent. |
 | `height` | CSS length for the shell (e.g. `'600px'`, `'min(70vh, 48rem)'`). Recommended so inner panes scroll correctly. |
 
 ### Outputs
@@ -255,6 +256,7 @@ After this emits a successful result, the file manager **refetches** the current
 | Restrict visible file types | **`[visibleFileTypes]`** — array of extensions (e.g. `['.pdf', '.docx']`); ANDed with any active filter panel selection. Pass `null` (or omit) to show all types. |
 | Hide folder upload | **`[enableFolderUpload]="false"`** — removes the "Upload Folders" control. Also respect **`capabilities.supportsFolderUpload`** on the provider (`false` disables even if `enableFolderUpload` is true). |
 | Preview pane initial state | **`[previewPaneVisible]="true"`** opens the pane on load. The user can toggle it via the Preview toolbar button at any time. Preview only works if the provider implements **`preview()`**, unless you supply a `[wcfmPreview]` custom template. |
+| Restrict previewable file types | **`[previewableExtensions]`** — array of extensions without leading dots (e.g. `['pdf', 'png', 'txt']`). Files not in the list show "no preview" without calling `provider.preview()`. Defaults to `null` (all types). Leading dots are stripped automatically. |
 | Provider-driven capability flags | Set **`WhitecapStorageProvider.capabilities`**: **`supportsTree`** (omit `tree()` to leave tree empty), **`supportsFolderUpload`**, **`supportsPreview`** (informational; preview runs if `preview` exists). **`supportsPagination`** exists on the type but is **not read** by the component today—pagination UI always uses `list` + `total`. |
 | Per-item action restrictions | Set **`permissions`** on `WhitecapFileItem`: `canRename`, `canDelete`, `canMove`, `canDownload`. `false` disables; `undefined` means allowed. |
 | Custom grid tile rendering | Project **`<ng-template wcfmTileItem let-item let-selected="selected">`** as a content child. |

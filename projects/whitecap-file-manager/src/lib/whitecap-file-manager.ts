@@ -17,7 +17,8 @@ import {
   viewChild,
 } from '@angular/core';
 import { DomSanitizer, SafeHtml, SafeResourceUrl } from '@angular/platform-browser';
-import { Subscription } from 'rxjs';
+import { catchError, EMPTY, finalize, map, Subject, switchMap } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DEFAULT_TOOLBAR_ACTIONS } from './default-toolbar-actions';
 import { BRAND_FILE_TYPE_SVGS } from './brand-file-type-svgs';
 import { buildFileTypeIcons, FileIconKind, resolveFileIconKind } from './file-type-icons';
@@ -744,7 +745,11 @@ const UPLOAD_MIME_TO_EXTENSION: Readonly<Record<string, string>> = {
                         <span class="wcfm-preview-eml-val">{{ hdr.value }}</span>
                       </div>
                     }
-                    <pre class="wcfm-preview-eml-body">{{ emlBody() }}</pre>
+                    @if (emlBodyIsHtml() && emlBodySafeHtml(); as safeHtml) {
+                      <iframe class="wcfm-preview-eml-iframe" [srcdoc]="safeHtml" sandbox title="Email body"></iframe>
+                    } @else {
+                      <pre class="wcfm-preview-eml-body">{{ emlBody() }}</pre>
+                    }
                   </div>
                 } @else if (previewKind() === 'text' && previewText() !== null) {
                   <pre class="wcfm-preview-text">{{ previewText() }}</pre>
@@ -2131,6 +2136,10 @@ const UPLOAD_MIME_TO_EXTENSION: Readonly<Record<string, string>> = {
       font-size: 11px; line-height: 1.4; color: #111;
       white-space: pre-wrap; word-break: break-word;
     }
+    .wcfm-preview-eml-iframe {
+      width: 100%; min-height: 14rem; max-height: 18rem;
+      border: none; display: block;
+    }
     .wcfm-preview-text {
       width: 100%; max-height: 18rem; overflow: auto;
       margin: 0; padding: 8px;
@@ -2220,6 +2229,8 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
   readonly previewPaneVisible = input<boolean>(false);
   /** Restricts visible file types globally (ANDed with any active user filter). Pass null to show all types. */
   readonly visibleFileTypes = input<string[] | null>(null);
+  /** Limits which file extensions the built-in preview pane will attempt to load. Extensions without leading dots (e.g. `['pdf', 'png', 'txt']`). Pass null (default) to allow all types the provider supports. */
+  readonly previewableExtensions = input<string[] | null>(null);
   /** CSS length for the explorer shell (e.g. `600px`, `42rem`, `min(70vh, 48rem)`). Fills the host; inner panes scroll. */
   readonly height = input<string | undefined>(undefined);
 
@@ -2388,9 +2399,15 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
     if (this.previewKind() !== 'eml') return [] as { key: string; value: string }[];
     return this.parseEmlHeaders(this.previewText());
   });
-  readonly emlBody = computed(() => {
-    if (this.previewKind() !== 'eml') return '';
-    return this.parseEmlBody(this.previewText());
+  private readonly emlParsed = computed(() => {
+    if (this.previewKind() !== 'eml') return { isHtml: false, body: '' };
+    return this.parseEmlContent(this.previewText());
+  });
+  readonly emlBody = computed(() => this.emlParsed().body);
+  readonly emlBodyIsHtml = computed(() => this.emlParsed().isHtml);
+  readonly emlBodySafeHtml = computed<SafeHtml | null>(() => {
+    if (!this.emlBodyIsHtml()) return null;
+    return this.sanitizer.bypassSecurityTrustHtml(this.emlBody());
   });
   readonly previewItem = computed<WhitecapFileItem | null>(() => {
     const selected = this.store.selectedItems();
@@ -2399,7 +2416,7 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
     }
     return null;
   });
-  private previewSub?: Subscription;
+  private readonly previewTrigger$ = new Subject<void>();
   private previewObjectUrl: string | null = null;
 
   readonly pageSizeOptions = [10, 25, 50, 100];
@@ -2483,6 +2500,66 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
         this.filterOpen.set(false);
         this.clearTreeSplitterDragListeners();
       }
+    });
+
+    this.previewTrigger$.pipe(
+      switchMap(() => {
+        this.releasePreview();
+        const item = this.previewItem();
+        if (!item || !this.showPreview()) {
+          this.previewKind.set('none');
+          return EMPTY;
+        }
+        const provider = this.provider();
+        if (!provider?.preview) {
+          this.previewKind.set('none');
+          return EMPTY;
+        }
+        const ext = item.extension?.toLowerCase();
+        const previewable = this.previewableExtensions();
+        if (previewable && (!ext || !previewable.some((e) => e.replace(/^\./, '').toLowerCase() === ext))) {
+          this.previewKind.set('none');
+          return EMPTY;
+        }
+        this.previewLoading.set(true);
+        return provider.preview(item).pipe(
+          map((result) => ({ result, ext })),
+          catchError(() => {
+            this.previewKind.set('none');
+            return EMPTY;
+          }),
+          finalize(() => this.previewLoading.set(false)),
+        );
+      }),
+      takeUntilDestroyed(),
+    ).subscribe({
+      next: ({ result, ext }) => {
+        if (typeof result === 'string') {
+          this.previewText.set(result);
+          this.previewKind.set(ext === 'eml' ? 'eml' : 'text');
+          return;
+        }
+        if (result.type.startsWith('image/')) {
+          this.previewObjectUrl = URL.createObjectURL(result);
+          this.previewImageUrl.set(this.previewObjectUrl);
+          this.previewKind.set('image');
+          return;
+        }
+        if (result.type === 'application/pdf' || ext === 'pdf') {
+          this.previewObjectUrl = URL.createObjectURL(result);
+          this.previewPdfUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(this.previewObjectUrl));
+          this.previewKind.set('pdf');
+          return;
+        }
+        const isEml = result.type === 'message/rfc822' || ext === 'eml';
+        result
+          .text()
+          .then((text) => {
+            this.previewText.set(text);
+            this.previewKind.set(isEml ? 'eml' : 'text');
+          })
+          .catch(() => this.previewKind.set('none'));
+      },
     });
   }
 
@@ -3237,61 +3314,10 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
   }
 
   private refreshPreview(): void {
-    const item = this.previewItem();
-    this.releasePreview();
-    if (!item || !this.showPreview()) {
-      this.previewKind.set('none');
-      return;
-    }
-
-    const provider = this.provider();
-    if (!provider?.preview) {
-      this.previewKind.set('none');
-      return;
-    }
-
-    const ext = item.extension?.toLowerCase();
-
-    this.previewLoading.set(true);
-    this.previewSub = provider.preview(item).subscribe({
-      next: (result) => {
-        this.previewLoading.set(false);
-        if (typeof result === 'string') {
-          this.previewText.set(result);
-          this.previewKind.set(ext === 'eml' ? 'eml' : 'text');
-          return;
-        }
-        if (result.type.startsWith('image/')) {
-          this.previewObjectUrl = URL.createObjectURL(result);
-          this.previewImageUrl.set(this.previewObjectUrl);
-          this.previewKind.set('image');
-          return;
-        }
-        if (result.type === 'application/pdf' || ext === 'pdf') {
-          this.previewObjectUrl = URL.createObjectURL(result);
-          this.previewPdfUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(this.previewObjectUrl));
-          this.previewKind.set('pdf');
-          return;
-        }
-        const isEml = result.type === 'message/rfc822' || ext === 'eml';
-        result
-          .text()
-          .then((text) => {
-            this.previewText.set(text);
-            this.previewKind.set(isEml ? 'eml' : 'text');
-          })
-          .catch(() => this.previewKind.set('none'));
-      },
-      error: () => {
-        this.previewLoading.set(false);
-        this.previewKind.set('none');
-      },
-    });
+    this.previewTrigger$.next();
   }
 
   private releasePreview(): void {
-    this.previewSub?.unsubscribe();
-    this.previewSub = undefined;
     if (this.previewObjectUrl) {
       URL.revokeObjectURL(this.previewObjectUrl);
       this.previewObjectUrl = null;
@@ -3325,10 +3351,42 @@ export class WhitecapFileManagerComponent implements OnInit, OnDestroy {
       });
   }
 
-  private parseEmlBody(text: string | null): string {
-    if (!text) return '';
-    const parts = text.split(/\r?\n\r?\n/);
-    return parts.slice(1).join('\n\n').trim();
+  private parseEmlContent(text: string | null): { isHtml: boolean; body: string } {
+    if (!text) return { isHtml: false, body: '' };
+    const sections = text.split(/\r?\n\r?\n/);
+    const headerSection = sections[0] ?? '';
+    const rawBody = sections.slice(1).join('\n\n');
+    const contentType = this.extractEmlHeader(headerSection, 'content-type') ?? '';
+    if (/multipart\//i.test(contentType)) {
+      const boundaryMatch = contentType.match(/boundary=["']?([^"';\s]+)["']?/i);
+      if (boundaryMatch) {
+        const boundary = boundaryMatch[1];
+        const html = this.findMultipartPart(rawBody, boundary, 'text/html');
+        if (html != null) return { isHtml: true, body: html };
+        const plain = this.findMultipartPart(rawBody, boundary, 'text/plain');
+        if (plain != null) return { isHtml: false, body: plain };
+      }
+    }
+    if (/text\/html/i.test(contentType)) return { isHtml: true, body: rawBody.trim() };
+    return { isHtml: false, body: rawBody.trim() };
+  }
+
+  private findMultipartPart(body: string, boundary: string, mimeType: string): string | null {
+    const parts = body.split('--' + boundary);
+    for (const part of parts) {
+      const split = part.split(/\r?\n\r?\n/);
+      const partHeaders = split[0] ?? '';
+      const partBody = split.slice(1).join('\n\n');
+      const ct = this.extractEmlHeader(partHeaders, 'content-type') ?? '';
+      if (new RegExp(mimeType, 'i').test(ct)) return partBody.trim();
+    }
+    return null;
+  }
+
+  private extractEmlHeader(headers: string, name: string): string | null {
+    const regex = new RegExp(`^${name}:\\s*(.+(?:\\r?\\n[ \\t].+)*)`, 'im');
+    const match = headers.match(regex);
+    return match ? match[1].replace(/\r?\n[ \t]+/g, ' ').trim() : null;
   }
 
   onSelectAllChange(event: Event): void {
